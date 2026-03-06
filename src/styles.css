@@ -1,0 +1,63 @@
+/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "leaflet/dist/leaflet.css";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --bg:       #F0F9FF;
+  --surface:  #FFFFFF;
+  --border:   #BAE6FD;
+  --text:     #0F172A;
+  --muted:    #64748B;
+  --green:    #10B981;
+  --green-bg: #ECFDF5;
+  --green-b:  #D1FAE5;
+  --amber:    #F59E0B;
+  --amber-bg: #FFFBEB;
+  --amber-b:  #FEF3C7;
+  --red:      #EF4444;
+  --red-bg:   #FEF2F2;
+  --red-b:    #FEE2E2;
+  --blue:     #3B82F6;
+  --blue-bg:  #EFF6FF;
+  --blue-b:   #DBEAFE;
+  --purple:   #8B5CF6;
+  --radius:   24px;
+  --shadow:   0 4px 16px rgba(14, 165, 233, 0.1);
+}
+/* ─── DARK MODE ─── */
+[data-theme="dark"] {
+  --bg:       #0A0A0A;
+  --surface:  #171717;
+  --border:   #262626;
+  --text:     #F5F5F5;
+  --muted:    #A3A3A3;
+  --green:    #34D399;
+  --green-bg: #064E3B;
+  --green-b:  #065F46;
+  --amber:    #FBBF24;
+  --amber-bg: #78350F;
+  --amber-b:  #92400E;
+  --red:      #F87171;
+  --red-bg:   #7F1D1D;
+  --red-b:    #991B1B;
+  --blue:     #60A5FA;
+  --blue-bg:  #1E3A8A;
+  --blue-b:   #1E40AF;
+  --shadow:   0 4px 12px rgba(0,0,0,0.4), 0 12px 40px rgba(0,0,0,0.4);
+}
+[data-theme="dark"] body{transition:background 0.3s,color 0.3s}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+}

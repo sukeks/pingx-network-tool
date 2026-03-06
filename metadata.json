@@ -1,0 +1,5 @@
+{
+  "name": "PingX",
+  "description": "Free internet diagnostic. Find exactly what's wrong with your connection in plain English.",
+  "requestFramePermissions": []
+}

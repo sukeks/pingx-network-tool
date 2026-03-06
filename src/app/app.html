@@ -1,0 +1,811 @@
+<style>
+/* ─── GAUGE VISUALIZATION ─── */
+.gauge-container {
+  position: relative;
+  width: 160px; height: 160px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto;
+}
+.gauge-svg {
+  overflow: visible;
+  /* transform: rotate(135deg); Base rotation handled in circles */
+}
+.gauge-score-text {
+  font-family: 'Inter', sans-serif;
+  transition: fill 0.3s;
+}
+/* Reset transform on SVG, handle in circles */
+.gauge-svg { transform: none; }
+
+/* ─── TECH MODAL ─── */
+.tech-modal { max-width: 600px; }
+.tech-report-text {
+  width: 100%; height: 300px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  resize: none; outline: none;
+}
+.btn-icon { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--muted); }
+.btn-icon:hover { color: var(--text); }
+</style>
+
+<div id="toast" [class.show]="toastMsg()">{{ toastMsg() }}</div>
+
+<!-- TECH REPORT MODAL -->
+@if (showTechModal()) {
+  <div class="modal-backdrop open" (click)="showTechModal.set(false)" (keydown.enter)="showTechModal.set(false)" tabindex="0">
+    <div class="modal tech-modal" (click)="$event.stopPropagation()" (keydown.enter)="$event.stopPropagation()" tabindex="0">
+      <div class="modal-header">
+        <div class="modal-title">Technical Support Report</div>
+        <button class="btn-icon" (click)="showTechModal.set(false)" style="margin-left:auto;">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-desc">Copy this report and send it to your IT support or ISP.</div>
+        <textarea readonly class="tech-report-text" [value]="techReport()"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" (click)="copyTechReport()">📋 Copy to Clipboard</button>
+        <button class="btn btn-secondary" (click)="showTechModal.set(false)" style="margin-left:10px;">Close</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- INFO MODAL -->
+@let info = modalInfo();
+<div class="modal-backdrop" [class.open]="info" (click)="closeModal()" (keydown.enter)="closeModal()" tabindex="0">
+  <div class="modal" (click)="$event.stopPropagation()" (keydown.enter)="$event.stopPropagation()" tabindex="0">
+    @if (info) {
+      <div class="modal-header">
+        <div class="modal-header-icon">{{ info.icon }}</div>
+        <div>
+          <div class="modal-title">{{ info.title }}</div>
+          <div class="modal-subtitle">{{ info.subtitle }}</div>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-desc">{{ info.desc }}</div>
+        <div class="modal-ranges">
+          @for (r of info.ranges; track r.label) {
+            <div class="modal-range">
+              <div>
+                <div class="mr-dot" [class]="r.dot"></div>
+              </div>
+              <div style="flex:1">
+                <div class="mr-label">{{ r.label }}</div>
+                @if (r.meaning) {
+                  <div class="mr-meaning">{{ r.meaning }}</div>
+                }
+              </div>
+              <div class="mr-range">{{ r.range }}</div>
+            </div>
+          }
+        </div>
+        @if (info.tip) {
+          <div class="modal-tip">{{ info.tip }}</div>
+        }
+      </div>
+      <div class="modal-footer">
+        <button class="btn-modal-close" (click)="closeModal()">Got it</button>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="brand">
+    <div class="brand-icon">📶</div>
+    <div>
+      <span class="brand-name">PingX</span>
+      <span class="brand-tag">Internet Health Check</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <button class="auto-btn" (click)="toggleAutoMonitor()" [class.active]="autoMonitor()" title="Toggle Auto-Monitor">
+      <span class="auto-text">Auto-Monitor (5m)</span>
+      <div class="toggle-switch">
+        <div class="toggle-knob"></div>
+      </div>
+    </button>
+    <div class="network-status" [class.online]="isOnline()" [class.offline]="!isOnline()">
+      <div class="net-dot"></div>
+      {{ isOnline() ? 'Online' : 'Offline' }}
+    </div>
+    <button class="theme-btn" (click)="toggleTheme()" title="Toggle dark mode">
+      {{ theme() === 'dark' ? '☀️' : '🌙' }}
+    </button>
+    <div class="live-pill" [class.show]="running()">
+      <div class="live-dot"></div>LIVE
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- HERO CARD -->
+  <div class="hero-card" id="top">
+      <div class="hero-left">
+        <div class="hero-eyebrow">{{ heroEyebrow() }}</div>
+        <div class="hero-status" [class]="verdict().statusClass">
+          <span class="status-icon">{{ verdict().statusIcon }}</span>
+          {{ verdict().status }}
+        </div>
+        <div class="hero-explain">{{ verdict().explain }}</div>
+        <div class="controls">
+          <button class="btn btn-primary" [class.btn-running]="running()" (click)="startTest()" [disabled]="running() || !isOnline()">
+            @if (running()) {
+              <span class="spinner"></span>
+            }
+            {{ running() ? 'Running...' : '▶ Start Check' }}
+          </button>
+          <button class="btn" [class.btn-danger]="running()" [class.btn-secondary]="!running()" (click)="stopTest()" [disabled]="!running()">
+            ⏹ Stop Test
+          </button>
+          <button class="btn btn-secondary btn-reset" (click)="resetApp()" [disabled]="running()" title="Reset application">
+            <span class="reset-icon">🔄</span> Reset
+          </button>
+        </div>
+      </div>
+
+      <div class="hero-right">
+        <div class="gauge-container">
+        <svg viewBox="0 0 160 160" width="160" height="160" class="gauge-svg">
+          <!-- Definitions for gradients -->
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#ef4444" />
+              <stop offset="50%" stop-color="#eab308" />
+              <stop offset="100%" stop-color="#22c55e" />
+            </linearGradient>
+            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          <!-- Background Track -->
+          <circle cx="80" cy="80" r="70" fill="none" stroke="var(--border)" stroke-width="12" 
+                  stroke-dasharray="330 440" stroke-linecap="round" [attr.transform]="gaugeRotation()" />
+
+          <!-- Progress Track -->
+          <circle cx="80" cy="80" r="70" fill="none" stroke="url(#gaugeGrad)" stroke-width="12"
+                  stroke-dasharray="330 440" [attr.stroke-dashoffset]="gaugeDashOffset()" 
+                  stroke-linecap="round" [attr.transform]="gaugeRotation()"
+                  filter="url(#glow)" />
+          
+          <!-- Needle -->
+          <g [attr.transform]="needleRotation()">
+             <circle cx="80" cy="80" r="6" fill="var(--text)" />
+             <path d="M 77 80 L 80 25 L 83 80 Z" fill="var(--text)" />
+          </g>
+          
+          <!-- Inner Text -->
+          <text #scoreNum x="80" y="75" text-anchor="middle" font-size="38" font-weight="800" fill="var(--text)" class="gauge-score-text">
+            {{ displayedScore() }}
+          </text>
+          <text x="80" y="95" text-anchor="middle" font-size="11" font-weight="700" fill="var(--muted)" style="text-transform: uppercase; letter-spacing: 1px;">
+            Score
+          </text>
+          
+          <!-- Status Text -->
+          <text x="80" y="115" text-anchor="middle" font-size="12" font-weight="600" [attr.fill]="gaugeColorHex()">
+            {{ displayedScore() >= 75 ? 'Excellent' : displayedScore() >= 45 ? 'Fair' : 'Poor' }}
+          </text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="progress-bar-wrap" [class.show]="progress().show">
+    <div class="progress-label">
+      <span>{{ progress().label }}</span>
+      <span>{{ progress().pct }}%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" [style.width.%]="progress().pct"></div>
+    </div>
+  </div>
+
+  <!-- ACTION CARD -->
+  <div class="action-card" [class]="verdict().actionClass">
+    <div class="action-icon-wrap">{{ verdict().actionIcon }}</div>
+    <div class="action-body">
+      <div class="action-eyebrow">{{ verdict().actionEye }}</div>
+      <div class="action-title">{{ verdict().actionTitle }}</div>
+      <div class="action-desc">{{ verdict().actionDesc }}</div>
+    </div>
+  </div>
+
+  <!-- THREE METRICS -->
+  <div class="metrics">
+
+    <div class="metric-card has-tooltip" [class]="!showResults() ? '' : gLat()">
+      <div class="mc-tooltip">
+        Latency is the time it takes for a message to travel to a server and back.
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.2);">
+          <strong>{{ !showResults() ? 'Waiting...' : (gLat() === 'good' ? 'Fast' : gLat() === 'warn' ? 'Slow' : 'Very Slow') }}:</strong>
+          {{ !showResults() ? 'Test not started.' : (gLat() === 'good' ? 'Great for gaming and calls.' : gLat() === 'warn' ? 'You might feel some delay.' : 'Noticeable lag is likely.') }}
+        </div>
+      </div>
+      <div class="mc-top">
+        <div class="mc-icon">⚡</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="mc-badge" [class]="!showResults() ? 'badge-def' : 'badge-' + gLat()">
+            {{ !showResults() ? '—' : (gLat() === 'good' ? 'Fast' : gLat() === 'warn' ? 'Slow' : 'Very slow') }}
+          </div>
+          <button class="info-btn" (click)="showInfo('latency')">i</button>
+        </div>
+      </div>
+      <div class="mc-num">{{ !showResults() ? '--' : avgLat() }}</div>
+      <div class="mc-unit">milliseconds</div>
+      
+      <div style="margin-top: auto;">
+        @if (showResults() && udpLatency() !== null) {
+          <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>UDP (Gaming/Calls): {{ udpLatency() }}ms</span>
+            </div>
+            <div style="height: 16px; display: flex; align-items: flex-end; gap: 1px; margin-top: 4px; opacity: 0.7;">
+              @for (u of udpHistory(); track $index) {
+                <div [style.height.px]="Math.min(u / 5, 16)" 
+                     [style.background-color]="u < 60 ? 'var(--green)' : u < 140 ? 'var(--amber)' : 'var(--red)'"
+                     style="flex: 1; min-width: 1px; border-radius: 1px 1px 0 0; transition: height 0.2s;"></div>
+              }
+            </div>
+          </div>
+        }
+        <div class="mc-name">Response Speed</div>
+        <div class="mc-explain">
+          {{ !showResults() ? 'How fast your internet responds when you click something or make a call.' : 
+             (gLat() === 'good' ? avgLat() + 'ms — great. Websites and calls respond instantly.' :
+              gLat() === 'warn' ? avgLat() + 'ms — a bit slow. You may notice lag on calls or games.' :
+              avgLat() + 'ms — too slow. This is causing your connection problems.') }}
+        </div>
+      </div>
+    </div>
+
+    <div class="metric-card has-tooltip" [class]="!showResults() ? '' : gLoss()" [class.loss-active]="packetLossDetected()">
+      <div class="mc-tooltip">
+        Packet loss is how much of your data gets lost in transit.
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.2);">
+          <strong>{{ !showResults() ? 'Waiting...' : (gLoss() === 'good' ? 'Perfect' : gLoss() === 'warn' ? 'Minor Loss' : 'High Loss') }}:</strong>
+          {{ !showResults() ? 'Test not started.' : (gLoss() === 'good' ? 'No data is being lost.' : gLoss() === 'warn' ? 'Occasional glitches may occur.' : 'Expect severe buffering/disconnects.') }}
+        </div>
+      </div>
+      <div class="mc-top">
+        <div class="mc-icon">📦</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="mc-badge" [class]="!showResults() ? 'badge-def' : 'badge-' + gLoss()">
+            {{ !showResults() ? '—' : (gLoss() === 'good' ? 'None' : gLoss() === 'warn' ? 'Some lost' : 'High loss!') }}
+          </div>
+          <button class="info-btn" (click)="showInfo('loss')">i</button>
+        </div>
+      </div>
+      <div class="mc-num">{{ !showResults() ? '--' : lossPct() }}</div>
+      <div class="mc-unit">% data lost</div>
+      
+      <div style="margin-top: auto;">
+        @if (showResults()) {
+          <div class="packet-grid">
+            @for (l of lossHistory(); track $index) {
+              <div class="pkt-bar" [style.height.px]="Math.max(l * 0.2, 2)" [class.lost]="l > 0" [title]="l.toFixed(1) + '% loss'"></div>
+            }
+            @if (lossHistory().length === 0) {
+              <div style="font-size:10px;color:var(--muted);">Waiting for packets...</div>
+            }
+          </div>
+          <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">{{ lossCount() }} lost / {{ pings() }} sent</div>
+        }
+        
+        <div class="mc-name">Data Delivery</div>
+        <div class="mc-explain">
+          {{ !showResults() ? 'How much of your data successfully gets through. Should always be 0%.' : 
+             (gLoss() === 'good' ? 'All your data is getting through safely. No drops detected.' :
+              gLoss() === 'warn' ? lossPct() + '% of data is being lost. Calls will glitch and pages may partially fail.' :
+              lossPct() + '% of your data is being dropped. This is causing your disconnections.') }}
+        </div>
+      </div>
+    </div>
+
+    <div class="metric-card has-tooltip" [class]="!showResults() ? '' : gJit()">
+      <div class="mc-tooltip">
+        Jitter measures how much your speed fluctuates.
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.2);">
+          <strong>{{ !showResults() ? 'Waiting...' : (gJit() === 'good' ? 'Stable' : gJit() === 'warn' ? 'Unsteady' : 'Unstable') }}:</strong>
+          {{ !showResults() ? 'Test not started.' : (gJit() === 'good' ? 'Smooth connection.' : gJit() === 'warn' ? 'Minor audio/video chops.' : 'Poor experience for real-time apps.') }}
+        </div>
+      </div>
+      <div class="mc-top">
+        <div class="mc-icon">〰️</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="mc-badge" [class]="!showResults() ? 'badge-def' : 'badge-' + gJit()">
+            {{ !showResults() ? '—' : (gJit() === 'good' ? 'Stable' : gJit() === 'warn' ? 'Unsteady' : 'Unstable') }}
+          </div>
+          <button class="info-btn" (click)="showInfo('jitter')">i</button>
+        </div>
+      </div>
+      <div class="mc-num">{{ !showResults() ? '--' : jitter() }}</div>
+      <div class="mc-unit">milliseconds</div>
+      
+      <div style="margin-top: auto;">
+        <div class="mc-name">Consistency</div>
+        
+        <!-- Jitter Visualization -->
+        <div style="height: 30px; display: flex; align-items: flex-end; gap: 2px; margin: 8px 0; opacity: 0.8;">
+          @for (j of jitterHistory(); track $index) {
+            <div [style.height.px]="Math.min(j * 2, 30)" 
+                 [style.background-color]="j < 15 ? 'var(--green)' : j < 35 ? 'var(--amber)' : 'var(--red)'"
+                 style="flex: 1; min-width: 2px; border-radius: 1px 1px 0 0; transition: height 0.2s;"></div>
+          }
+          @if (jitterHistory().length === 0) {
+            <div style="width: 100%; height: 1px; background: var(--border);"></div>
+          }
+        </div>
+
+        <div class="mc-explain">
+          {{ !showResults() ? 'How steady your connection is. High inconsistency makes calls sound choppy.' : 
+             (gJit() === 'good' ? jitter() + 'ms — very consistent. Your connection speed stays steady.' :
+              gJit() === 'warn' ? jitter() + 'ms — varies a bit. You may hear crackles on voice calls.' :
+              jitter() + 'ms — jumps around a lot. This causes choppy audio and freezing video.') }}
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- YOUR CONNECTION (Moved to top) -->
+  <div class="card" style="margin-bottom: 20px;">
+    <div class="card-title">
+      📋 Your Connection
+      <button class="info-btn" (click)="showInfo('connection')" style="margin-left:4px;">i</button>
+      <button class="btn btn-secondary" style="margin-left:auto; padding: 2px 6px; font-size: 10px;" (click)="exportSupportTicket()">📋 Copy Ticket</button>
+    </div>
+    <div class="conn-grid">
+      <div class="conn-item has-tooltip">
+        <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Wired connections provide the most stable experience. WiFi is convenient but prone to interference that degrades user experience.</div>
+        <div class="conn-item-label">
+          <span class="anim-icon pulse">🔌</span> Connection <button class="info-btn" (click)="showInfo('conn-type')" style="margin-left:2px;width:14px;height:14px;font-size:9px;">i</button>
+        </div>
+        <div style="margin-top: auto;">
+          <div class="conn-item-val">{{ connInfo().type }}</div>
+          <div class="conn-item-sub">{{ connInfo().sub }}</div>
+        </div>
+      </div>
+      <div class="conn-item has-tooltip">
+        <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Download speed determines how fast you can pull data. It's important for buffer-free streaming and fast file downloads.</div>
+        <div class="conn-item-label">
+          <span class="anim-icon bounce">⬇️</span> Download <button class="info-btn" (click)="showInfo('conn-speed')" style="margin-left:2px;width:14px;height:14px;font-size:9px;">i</button>
+        </div>
+        
+        <div style="margin-top: auto; width: 100%;">
+          <div class="turbo-bar-wrap">
+            <div class="tb-val" [class.active]="connInfo().speedSub === 'Downloading...'">{{ displayedDownloadSpeed() }} <span class="tb-unit">Mbps</span></div>
+            <div class="tb-track">
+              <div class="tb-fill dl-theme" [style.width.%]="getSpeedPct(displayedDownloadSpeed())">
+                <div class="tb-glare"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="conn-item-sub" style="text-align:center;">{{ connInfo().speedSub }}</div>
+          
+          <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:10px; color:var(--muted); padding:0 4px; width: 100%;">
+            <div>Peak: {{ downloadPeak() }} Mbps</div>
+            <div>{{ downloadBytes() }} MB</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="conn-item has-tooltip">
+        <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Upload speed determines how fast you can send data. It's critical for clear video calls and sending large files quickly.</div>
+        <div class="conn-item-label">
+          <span class="anim-icon bounce">⬆️</span> Upload <button class="info-btn" (click)="showInfo('conn-upload')" style="margin-left:2px;width:14px;height:14px;font-size:9px;">i</button>
+        </div>
+        
+        <div style="margin-top: auto; width: 100%;">
+          <div class="turbo-bar-wrap">
+            <div class="tb-val" [class.active]="connInfo().uploadSub === 'Uploading...'">{{ displayedUploadSpeed() }} <span class="tb-unit">Mbps</span></div>
+            <div class="tb-track">
+              <div class="tb-fill ul-theme" [style.width.%]="getSpeedPct(displayedUploadSpeed())">
+                <div class="tb-glare"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="conn-item-sub" style="text-align:center;">{{ connInfo().uploadSub }}</div>
+          
+          <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:10px; color:var(--muted); padding:0 4px; width: 100%;">
+            <div>Peak: {{ uploadPeak() }} Mbps</div>
+            <div>{{ uploadBytes() }} MB</div>
+          </div>
+        </div>
+      </div>
+      <div class="conn-item has-tooltip">
+        <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">The total number of test packets sent to the server. More tests mean a more accurate measurement.</div>
+        <div class="conn-item-label">
+          <span class="anim-icon spin-slow">🔄</span> Tests Run <button class="info-btn" (click)="showInfo('conn-pings')" style="margin-left:2px;width:14px;height:14px;font-size:9px;">i</button>
+        </div>
+        <div style="margin-top: auto;">
+          <div class="conn-item-val">{{ pings() }}</div>
+          <div class="conn-item-sub">pings sent</div>
+        </div>
+      </div>
+      <div class="conn-item has-tooltip">
+        <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">How long the app has been actively monitoring your connection in this session.</div>
+        <div class="conn-item-label">
+          <span class="anim-icon pulse">⏱️</span> Uptime <button class="info-btn" (click)="showInfo('conn-uptime')" style="margin-left:2px;width:14px;height:14px;font-size:9px;">i</button>
+        </div>
+        <div style="margin-top: auto;">
+          <div class="conn-item-val">{{ formatUptime(uptimeSec()) }}</div>
+          <div class="conn-item-sub">this session</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TWO COLUMNS -->
+  <div class="two-col" id="details">
+
+    <!-- WHERE IS THE PROBLEM -->
+    <div class="card" style="align-self: start;">
+      <div class="card-title">
+        🔎 Where is the problem?
+        <button class="info-btn" (click)="showInfo('layers')" style="margin-left:4px;">i</button>
+      </div>
+      <div class="layer-list">
+
+        <div class="layer-row has-tooltip" [class]="layers()['device'].status">
+          <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Checks if your device itself is causing the issue (e.g., high CPU usage or background downloads).</div>
+          <div class="layer-dot"></div>
+          <div style="flex:1">
+            <div class="layer-name">
+              Your Device
+              <button class="info-btn" (click)="showInfo('ly-device')">i</button>
+            </div>
+            <div class="layer-desc">{{ layers()['device'].desc }}</div>
+            @if (layers()['device'].troubleshooting) {
+              <div class="layer-troubleshooting">
+                @for (line of layers()['device'].troubleshooting?.split('\n'); track $index) {
+                  <div>{{ line }}</div>
+                }
+              </div>
+            }
+          </div>
+          <div class="layer-badge" [class]="'lb-' + (layers()['device'].status === 'scanning' ? 'scan' : layers()['device'].status)">
+            {{ layers()['device'].badge }}
+          </div>
+        </div>
+
+        <div class="layer-row has-tooltip" [class]="layers()['wifi'].status">
+          <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Checks the connection between your device and your router. WiFi interference is a common cause of issues.</div>
+          <div class="layer-dot"></div>
+          <div style="flex:1">
+            <div class="layer-name">
+              {{ connInfo().type === '📱 Mobile Data' ? 'Mobile Network' : 'WiFi or Cable' }}
+              <button class="info-btn" (click)="showInfo('ly-wifi')">i</button>
+            </div>
+            <div class="layer-desc">{{ layers()['wifi'].desc }}</div>
+            @if (layers()['wifi'].troubleshooting) {
+              <div class="layer-troubleshooting">
+                @for (line of layers()['wifi'].troubleshooting?.split('\n'); track $index) {
+                  <div>{{ line }}</div>
+                }
+              </div>
+            }
+          </div>
+          <div class="layer-badge" [class]="'lb-' + (layers()['wifi'].status === 'scanning' ? 'scan' : layers()['wifi'].status)">
+            {{ layers()['wifi'].badge }}
+          </div>
+        </div>
+
+        <div class="layer-row has-tooltip" [class]="layers()['router'].status">
+          <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Checks if your router is overwhelmed or needs a restart.</div>
+          <div class="layer-dot"></div>
+          <div style="flex:1">
+            <div class="layer-name">
+              Your Router
+              <button class="info-btn" (click)="showInfo('ly-router')">i</button>
+            </div>
+            <div class="layer-desc">{{ layers()['router'].desc }}</div>
+            @if (layers()['router'].troubleshooting) {
+              <div class="layer-troubleshooting">
+                @for (line of layers()['router'].troubleshooting?.split('\n'); track $index) {
+                  <div>{{ line }}</div>
+                }
+              </div>
+            }
+          </div>
+          <div class="layer-badge" [class]="'lb-' + (layers()['router'].status === 'scanning' ? 'scan' : layers()['router'].status)">
+            {{ layers()['router'].badge }}
+          </div>
+        </div>
+
+        <div class="layer-row has-tooltip" [class]="layers()['isp'].status">
+          <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Checks the connection from your home to your Internet Service Provider. Issues here require calling your ISP.</div>
+          <div class="layer-dot"></div>
+          <div style="flex:1">
+            <div class="layer-name">
+              Internet Provider
+              <button class="info-btn" (click)="showInfo('ly-isp')">i</button>
+            </div>
+            <div class="layer-desc">{{ layers()['isp'].desc }}</div>
+            @if (layers()['isp'].troubleshooting) {
+              <div class="layer-troubleshooting">
+                @for (line of layers()['isp'].troubleshooting?.split('\n'); track $index) {
+                  <div>{{ line }}</div>
+                }
+              </div>
+            }
+          </div>
+          <div class="layer-badge" [class]="'lb-' + (layers()['isp'].status === 'scanning' ? 'scan' : layers()['isp'].status)">
+            {{ layers()['isp'].badge }}
+          </div>
+        </div>
+
+        <div class="layer-row has-tooltip" [class]="layers()['web'].status">
+          <div class="mc-tooltip" style="bottom: 100%; z-index: 30; width: 220px;">Checks if the specific website or service you're trying to reach is down.</div>
+          <div class="layer-dot"></div>
+          <div style="flex:1">
+            <div class="layer-name">
+              The Internet
+              <button class="info-btn" (click)="showInfo('ly-web')">i</button>
+            </div>
+            <div class="layer-desc">{{ layers()['web'].desc }}</div>
+            @if (layers()['web'].troubleshooting) {
+              <div class="layer-troubleshooting">
+                @for (line of layers()['web'].troubleshooting?.split('\n'); track $index) {
+                  <div>{{ line }}</div>
+                }
+              </div>
+            }
+          </div>
+          <div class="layer-badge" [class]="'lb-' + (layers()['web'].status === 'scanning' ? 'scan' : layers()['web'].status)">
+            {{ layers()['web'].badge }}
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- CONNECTION INFO + USE CASES -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+
+      <div class="card network-identity-card">
+        <div class="card-title">
+          🌍 Network Identity
+          <button class="info-btn" (click)="showInfo('network-info')" style="margin-left:4px;">i</button>
+        </div>
+        
+        <div class="ni-grid">
+          <div class="ni-item">
+            <div class="ni-label">IP Address</div>
+            <div class="ni-val">{{ networkInfo().ip }}</div>
+          </div>
+          <div class="ni-item">
+            <div class="ni-label">Provider (ISP)</div>
+            <div class="ni-val" [title]="networkInfo().isp">{{ networkInfo().isp }}</div>
+          </div>
+          <div class="ni-item" style="grid-column: span 2;">
+            <div class="ni-label">Location</div>
+            <div class="ni-val">{{ networkInfo().location }}</div>
+          </div>
+          
+          <!-- WiFi / Signal Details -->
+          <div class="ni-divider"></div>
+          
+          <div class="ni-item">
+            <div class="ni-label">Connection Type</div>
+            <div class="ni-val">{{ wifiInfo().type }}</div>
+          </div>
+          <div class="ni-item">
+            <div class="ni-label">Signal Quality</div>
+            <div class="ni-val" [class.good]="wifiInfo().signal === 'Excellent'" [class.ok]="wifiInfo().signal === 'Good'" [class.bad]="wifiInfo().signal === 'Weak'">
+              {{ wifiInfo().signal }}
+            </div>
+          </div>
+
+          <div class="ni-divider"></div>
+
+          <div class="ni-item">
+            <div class="ni-label">Browser</div>
+            <div class="ni-val">{{ networkInfo().browser }}</div>
+          </div>
+          <div class="ni-item">
+            <div class="ni-label">OS</div>
+            <div class="ni-val">{{ networkInfo().os }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GOOD ENOUGH FOR SECTION (Moved here) -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 12px; font-size: 13px;">
+          ✅ Good Enough For...
+          <button class="info-btn" (click)="showInfo('usecases')" style="margin-left:4px;">i</button>
+        </div>
+        <div class="use-cases">
+          <div class="use-row">
+            <div class="use-icon">🎮</div>
+            <div style="flex:1">
+              <div class="use-name">Gaming</div>
+              <div class="use-need">Needs low latency & jitter</div>
+            </div>
+            <div class="use-status" [class]="useCaseStatus().gaming === 'good' ? 'ok' : useCaseStatus().gaming === 'warn' ? 'warn' : useCaseStatus().gaming === 'dim' ? 'dim' : 'no'">
+              {{ useCaseStatus().gaming === 'good' ? 'Perfect' : useCaseStatus().gaming === 'warn' ? 'Playable' : useCaseStatus().gaming === 'dim' ? 'Waiting' : 'Laggy' }}
+            </div>
+          </div>
+          <div class="use-row">
+            <div class="use-icon">📹</div>
+            <div style="flex:1">
+              <div class="use-name">Video Calls</div>
+              <div class="use-need">Needs low loss & jitter</div>
+            </div>
+            <div class="use-status" [class]="useCaseStatus().video === 'good' ? 'ok' : useCaseStatus().video === 'warn' ? 'warn' : useCaseStatus().video === 'dim' ? 'dim' : 'no'">
+              {{ useCaseStatus().video === 'good' ? 'Perfect' : useCaseStatus().video === 'warn' ? 'Okay' : useCaseStatus().video === 'dim' ? 'Waiting' : 'Poor' }}
+            </div>
+          </div>
+          <div class="use-row">
+            <div class="use-icon">📺</div>
+            <div style="flex:1">
+              <div class="use-name">4K Streaming</div>
+              <div class="use-need">Needs high download speed</div>
+            </div>
+            <div class="use-status" [class]="useCaseStatus().stream === 'good' ? 'ok' : useCaseStatus().stream === 'warn' ? 'warn' : useCaseStatus().stream === 'dim' ? 'dim' : 'no'">
+              {{ useCaseStatus().stream === 'good' ? 'Perfect' : useCaseStatus().stream === 'warn' ? 'HD Only' : useCaseStatus().stream === 'dim' ? 'Waiting' : 'Buffering' }}
+            </div>
+          </div>
+          <div class="use-row">
+            <div class="use-icon">🌐</div>
+            <div style="flex:1">
+              <div class="use-name">Browsing</div>
+              <div class="use-need">Basic connectivity</div>
+            </div>
+            <div class="use-status" [class]="useCaseStatus().browse === 'good' ? 'ok' : useCaseStatus().browse === 'warn' ? 'warn' : useCaseStatus().browse === 'dim' ? 'dim' : 'no'">
+              {{ useCaseStatus().browse === 'good' ? 'Fast' : useCaseStatus().browse === 'warn' ? 'Slow' : useCaseStatus().browse === 'dim' ? 'Waiting' : 'Very Slow' }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BUFFERBLOAT TEST -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 12px; font-size: 13px;">
+          🚦 Bufferbloat Test
+          <button class="info-btn" (click)="showInfo('bufferbloat')" style="margin-left:4px;">i</button>
+        </div>
+        <div style="font-size: 12px; color: var(--muted); margin-bottom: 12px;">
+          Tests if your latency spikes when downloading a large file. High bufferbloat causes lag in games when others are streaming.
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-size: 13px;">
+            <div>Baseline: <strong>{{ unloadedLat() !== null ? unloadedLat() + 'ms' : '--' }}</strong></div>
+            <div>Loaded: <strong>{{ loadedLat() !== null ? loadedLat() + 'ms' : '--' }}</strong></div>
+          </div>
+          <button class="btn btn-primary btn-sm" (click)="runBufferbloatTest()" [disabled]="isBufferbloatRunning() || running()">
+            {{ isBufferbloatRunning() ? 'Testing...' : 'Run Test' }}
+          </button>
+        </div>
+        @if (bufferbloatStatus()) {
+          <div style="font-size: 12px; font-weight: 600; padding: 8px; border-radius: 6px; background: var(--border); color: var(--text);">
+            {{ bufferbloatStatus() }}
+          </div>
+        }
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- LIVE LOG & CHART -->
+  <div class="card" id="logs" style="margin-bottom:80px;">
+    <div class="card-title">
+      📡 Live Test Log & Chart
+      <span style="font-size:11px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:4px;">(each line = one ping to a server)</span>
+      <button class="info-btn" (click)="showInfo('log')" style="margin-left:6px;">i</button>
+      <button class="btn btn-secondary" style="margin-left:auto; padding: 4px 8px; font-size: 11px;" (click)="exportCsv()">📥 Export CSV</button>
+    </div>
+    <div id="latency-chart" style="width: 100%; height: 180px; margin-bottom: 16px; position: relative;"></div>
+    <div class="log-rows">
+      @if (logs().length === 0) {
+        <div class="log-row" style="justify-content:center;border-color:transparent;color:var(--muted);">
+          {{ running() ? 'Starting tests...' : 'Press Start to begin testing' }}
+        </div>
+      } @else {
+        @for (l of logs(); track $index) {
+          <div class="log-row" [class]="l.isLoss ? 'r' : l.ms < 60 ? 'g' : l.ms < 140 ? 'w' : 'r'">
+            <span class="log-time">{{ l.time }}</span>
+            <span class="log-host">{{ l.host }}</span>
+            <span class="log-status" [class]="l.isLoss ? 'r' : l.ms < 60 ? 'g' : l.ms < 140 ? 'w' : 'r'">
+              {{ l.isLoss ? 'Lost' : l.ms < 60 ? 'Fast' : l.ms < 140 ? 'Slow' : 'Lost' }}
+            </span>
+            <span class="log-ms" [class]="l.isLoss ? 'r' : l.ms < 60 ? 'g' : l.ms < 140 ? 'w' : 'r'">
+              {{ l.isLoss ? 'LOST' : l.ms + 'ms' }}
+            </span>
+          </div>
+        }
+      }
+    </div>
+  </div>
+
+</div>
+
+<!-- MOBILE NAV -->
+<nav class="mobile-nav">
+  <button class="nav-item" [class.active]="activeSection() === 'home'" (click)="scrollTo('top')">
+    <div class="nav-icon">🏠</div>
+    <div class="nav-label">Home</div>
+  </button>
+  <button class="nav-item" [class.active]="activeSection() === 'details'" (click)="scrollTo('details')">
+    <div class="nav-icon">🔎</div>
+    <div class="nav-label">Details</div>
+  </button>
+  <button class="nav-item" [class.active]="activeSection() === 'logs'" (click)="scrollTo('logs')">
+    <div class="nav-icon">📡</div>
+    <div class="nav-label">Log</div>
+  </button>
+  <button class="nav-item" [class.active]="showMobileMenu()" (click)="showMobileMenu.set(true)">
+    <div class="nav-icon">☰</div>
+    <div class="nav-label">Menu</div>
+  </button>
+</nav>
+
+<!-- MOBILE MENU OVERLAY -->
+@if (showMobileMenu()) {
+  <div class="mobile-menu-backdrop" (click)="showMobileMenu.set(false)">
+    <div class="mobile-menu-sheet" (click)="$event.stopPropagation()">
+      <div class="menu-header">
+        <span class="menu-title">Menu</span>
+        <button class="btn-icon" (click)="showMobileMenu.set(false)">✕</button>
+      </div>
+      <div class="menu-grid">
+        <button class="menu-btn" (click)="toggleTheme()">
+          <div class="menu-icon">{{ theme() === 'dark' ? '☀️' : '🌙' }}</div>
+          <div>Theme: {{ theme() === 'dark' ? 'Light' : 'Dark' }}</div>
+        </button>
+        <button class="menu-btn" (click)="toggleAutoMonitor()">
+          <div class="menu-icon">{{ autoMonitor() ? '✅' : '⭕' }}</div>
+          <div>Auto-Monitor: {{ autoMonitor() ? 'On' : 'Off' }}</div>
+        </button>
+        <button class="menu-btn" (click)="shareNow()">
+          <div class="menu-icon">🔗</div>
+          <div>Share</div>
+        </button>
+        <button class="menu-btn" (click)="copyReport()">
+          <div class="menu-icon">📋</div>
+          <div>Copy Report</div>
+        </button>
+        <button class="menu-btn" (click)="exportSupportTicket()">
+          <div class="menu-icon">🎫</div>
+          <div>Copy Ticket</div>
+        </button>
+        <button class="menu-btn" (click)="exportCsv()">
+          <div class="menu-icon">📥</div>
+          <div>Export CSV</div>
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- BOTTOM BAR -->
+<footer class="bottom-bar">
+  <div class="bottom-left">
+    @if (running()) {
+      <span style="color: var(--green);">Testing your connection...</span>
+    } @else if (!showResults() && !running()) {
+      Ready — press Start to check your internet
+    } @else {
+      Latency <strong>{{ avgLat() }}ms</strong> · Loss <strong>{{ lossPct() }}%</strong> · Jitter <strong>{{ jitter() }}ms</strong> · Score <strong>{{ score() }}/100</strong>
+      <span style="margin-left: 8px; color: var(--amber);">(Test stopped)</span>
+    }
+    <span class="made-with-inline">
+      Crafted by sukek · Made with <a href="https://gemini.google.com" target="_blank" rel="noopener noreferrer">Gemini</a>
+    </span>
+  </div>
+  <div class="bottom-right">
+    <button class="btn-sm" (click)="shareNow()">🔗 Share</button>
+    <button class="btn-sm" (click)="copyReport()">📋 Copy Report</button>
+  </div>
+</footer>
